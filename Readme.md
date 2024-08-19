@@ -1,4 +1,4 @@
-#Radar Chart Plotting Script
+# Radar Chart Plotting Script
 
 This script generates a radar chart from an Excel file and supports interactive annotations and saving the chart as an image.
 
