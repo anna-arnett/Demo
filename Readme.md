@@ -17,7 +17,7 @@ You can install these libraries using pip: pip install pandas numpy matplotlib m
 
 **Excel File Format**
 
-The Excel file DataToPlot.xlsx provides the expected structure of the spreadsheet, with the properties section in the first 10 rows and the data section starting from row 11
+The Excel file DataToPlot.xlsx provides the expected structure of the spreadsheet, with the properties section in the first 11 rows and the data section starting from row 12
 
 
 **Usage**
