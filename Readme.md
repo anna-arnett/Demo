@@ -1,9 +1,9 @@
-Radar Chart Plotting Script
+# Radar Chart Plotting Script
 
 This script generates a radar chart from an Excel file and supports features such as dynamic scaling, customizable plot properties, interactive annotations, and selective emphasis of series in an exported image.
 
 
-Prerequisites
+**Prerequisites**
 
 Ensure you have the following libraries installed:
 
@@ -15,14 +15,12 @@ Ensure you have the following libraries installed:
 You can install these libraries using pip: pip install pandas numpy matplotlib mplcursors
 
 
-Excel File Format
+**Excel File Format**
 
-The Excel file DataToPlot.xlsx provides the expected structure of the spreadsheet, with the properties section in the first 12 rows and the data section starting from row 13.
-
-Series are represented in columns, and checkboxes are used to indicate inclusion in the graph.
+The Excel file DataToPlot.xlsx provides the expected structure of the spreadsheet, with the properties section in the first 12 rows and the data section starting from row 13
 
 
-Usage
+**Usage**
 
 Ensure your Excel file DataToPlot.xlsx is properly formatted as described above.
 
@@ -40,14 +38,14 @@ Provide an interactive chart with hover functionality.
 Save the chart as an image if specified in the Excel file.
 
 
-Features
+**Features**
 
 Interactive Annotations: Hover over data points to see annotations.
 Customizable Appearance: Define colors, line types, markers, presence of legend, and more in the Excel file.
 Save Chart: Optionally save the generated chart as an image. Additionally, specify traces to be emphasized in the saved image.
 
 
-Notes
+**Notes**
 
 Ensure the Excel file path is correctly specified in the script (file_path variable).
 Customize the chart appearance by adjusting the properties in the Excel file.
