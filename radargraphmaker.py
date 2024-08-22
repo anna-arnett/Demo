@@ -7,14 +7,15 @@ import mplcursors
 import webbrowser
 from matplotlib.widgets import Button
 from matplotlib.patches import FancyBboxPatch
+import matplotlib.colors as mcolors
 
 # Read data from Excel
 file_path = 'DataToPlot.xlsx'  # Replace with your Excel file path
 df = pd.read_excel(file_path)
 
 # Extract properties and data
-properties_df = df.iloc[:11]  # Assuming first 10 rows include new rows for font size, font family, and series names
-data_df = df.iloc[11:]
+properties_df = df.iloc[:12]  # Assuming first 10 rows include new rows for font size, font family, and series names
+data_df = df.iloc[12:]
 
 # Extract font size and font family
 font_size = int(properties_df[properties_df['Categories'] == 'Font Size'].iloc[0, 3])
@@ -25,12 +26,10 @@ legend_flag = properties_df['Legend'].iloc[0] == 'Yes'
 
 
 emphasize_series_row = properties_df[properties_df['Categories'] == 'Emphasize Series']
-print("Emphasize Series Row:")
-print(emphasize_series_row)
-
 emphasize_series_flags = emphasize_series_row.iloc[0, 3:]
-print("Emphasize Series Flags:")
-print(emphasize_series_flags)
+
+include_series_row = properties_df[properties_df['Categories'] == 'Include']
+include_series_flags = include_series_row.iloc[0, 3:]
 
 # Dynamically allocate columns
 series_columns = [col for col in properties_df.columns if 'Series' in col]
@@ -99,10 +98,19 @@ def rgb_to_hex(rgb_str):
     rgb = rgb_str.replace('rgb(', '').replace(')', '').split(',')
     return '#{:02x}{:02x}{:02x}'.format(int(rgb[0]), int(rgb[1]), int(rgb[2]))
 
+def lighten_color(color, amount=0.5):
+    try:
+        c = mcolors.cnames[color]
+    except:
+        c = color
+    c = mcolors.to_rgb(c)
+    return mcolors.to_hex([min(1, x + (1 - x) * amount) for x in c])
+
+
 def adjust_color_for_export(color, emphasize_flag):
     if emphasize_flag:
         return color
-    return '#d3d3d3'
+    return lighten_color(color, amount=0.8)
 
 class ComplexRadar():
     def __init__(self, fig, variables, ranges, n_ordinate_levels=6, font_size=10):
@@ -227,6 +235,9 @@ radar.clear_annotations()
 # Plot each series
 for i, series in enumerate(data):
     series_name = series_names[i]
+    include_flag = include_series_flags.iloc[i]
+    if not include_flag:
+        continue
     print(f"Plotting series: {series_name}")
     radar.plot(series, properties[series_name], series_name, annotate_masks[series_name])
 
@@ -295,6 +306,11 @@ if save_image:
     newradar = ComplexRadar(fig2, categories, ranges, font_size=font_size)
     for i, series in enumerate(data):
         series_name = series_names[i]
+        include_flag = include_series_flags.iloc[i]
+
+        if not include_flag:
+            continue
+
         emphasize_flag = emphasize_series_flags.iloc[i]
         emphasize_flag = emphasize_flag == True
         print(f"Series: {series_name}, Emphasize: {emphasize_flag}")
