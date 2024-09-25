@@ -8,6 +8,7 @@ import webbrowser
 from matplotlib.widgets import Button
 from matplotlib.patches import FancyBboxPatch
 import matplotlib.colors as mcolors
+import math
 
 # Read data from Excel
 file_path = 'DataToPlot.xlsx'  # Replace with your Excel file path
@@ -23,7 +24,6 @@ font_family = properties_df[properties_df['Categories'] == 'Font Family'].iloc[0
 
 save_image = properties_df['Save Image'].iloc[0] == 'Yes'
 legend_flag = properties_df['Legend'].iloc[0] == 'Yes'
-
 
 emphasize_series_row = properties_df[properties_df['Categories'] == 'Emphasize Series']
 emphasize_series_flags = emphasize_series_row.iloc[0, 3:]
@@ -51,10 +51,11 @@ rcParams['font.size'] = font_size
 def _invert(x, limits):
     return limits[1] - (x - limits[0])
 
-# Function to scale data
-def _scale_data(data, ranges):
+# Function to scale data, with support for logarithmic scaling
+def _scale_data(data, ranges, log_scale_axes=None):
+    log_scale_axes = log_scale_axes or []
     scaled_data = []
-    for d, (y1, y2) in zip(data, ranges):
+    for i, (d, (y1, y2)) in enumerate(zip(data, ranges)):
         if pd.isna(d):
             # Skip N/A values
             scaled_data.append(np.nan)
@@ -63,7 +64,11 @@ def _scale_data(data, ranges):
         if not ((y1 <= d <= y2) or (y2 <= d <= y1)):
             print(f"Warning: Data point {d} is out of the specified range ({y1}, {y2}). Clipping the value.")
             d = max(min(d, max(y1, y2)), min(y1, y2))
-
+        
+        if i in log_scale_axes:
+            d = np.log10(d)
+            y1, y2 = np.log10(y1), np.log10(y2)
+        
         x1, x2 = ranges[0]
         if x1 > x2:
             d = _invert(d, (x1, x2))
@@ -106,14 +111,14 @@ def lighten_color(color, amount=0.5):
     c = mcolors.to_rgb(c)
     return mcolors.to_hex([min(1, x + (1 - x) * amount) for x in c])
 
-
 def adjust_color_for_export(color, emphasize_flag):
     if emphasize_flag:
         return color
     return lighten_color(color, amount=0.8)
 
 class ComplexRadar():
-    def __init__(self, fig, variables, ranges, n_ordinate_levels=6, font_size=10):
+    def __init__(self, fig, variables, ranges, n_ordinate_levels=6, font_size=10, log_scale_axes=None):
+        self.log_scale_axes = log_scale_axes or []
         angles = np.arange(0, 360, 360./len(variables))
         self.variables = variables
         self.ranges = ranges
@@ -130,20 +135,44 @@ class ComplexRadar():
             ax.grid("off")
             ax.xaxis.set_visible(False)
         for i, ax in enumerate(axes):
-            grid = np.linspace(*ranges[i], num=n_ordinate_levels)
-            gridlabel = [custom_formatter(x, None) for x in grid]
-            if ranges[i][0] > ranges[i][1]:
-                grid = grid[::-1]
-                gridlabel = gridlabel[::-1]
-            elif ranges[i][0] < ranges[i][1]:
-                gridlabel[0] = ""
-            ax.set_rgrids(grid, labels=gridlabel, angle=angles[i])
-            ax.set_ylim(*ranges[i])
+            ax.grid(False) # turn off the grid
+
+            if i in self.log_scale_axes:
+                # Calculate the logarithmic tick values
+                min_val, max_val = ranges[i][0], ranges[i][1]
+                base = 10
+                min_exp = math.floor(math.log10(min_val))
+                max_exp = math.ceil(math.log10(max_val))
+                log_ticks = [base ** exp for exp in range(min_exp, max_exp + 1)]
+
+                norm_ticks = [(math.log10(tick) - min_exp) / (max_exp - min_exp) for tick in log_ticks]
+
+                log_tick_labels = ['' if exp < 1 else f'$10^{{{exp}}}$' for exp in range(min_exp, max_exp + 1)]
+
+                print(f"Axis {i}: Logarithmic ticks: {log_ticks}")
+                print(f"Axis {i}: Normalized ticks: {norm_ticks}")
+                print(f"Axis {i}: Logarithmic labels: {log_tick_labels}")
+
+                # Set the grid and corresponding labels, now without duplicates
+                if i == 2:
+                    ax.set_rgrids(norm_ticks[2:], labels=log_tick_labels[2:], angle=angles[i])
+                else:
+                    ax.set_rgrids(norm_ticks, labels=log_tick_labels, angle=angles[i])
+                ax.set_ylim(0, 1)
+            else:
+                grid = np.linspace(*ranges[i], num=n_ordinate_levels)
+                gridlabel = [custom_formatter(x, None) for x in grid]
+
+                #new
+                ax.set_rgrids(grid, labels=gridlabel, angle=angles[i])
+                ax.set_ylim(*ranges[i])
+        
             for label in ax.get_yticklabels():
                 label.set_fontsize(font_size)
                 label.set_rotation(45)  # Rotate the label for better readability
                 label.set_horizontalalignment('right')  # Align right to avoid overlap
                 label.set_verticalalignment('bottom')  # Adjust vertical alignment
+                #label.set_position((label.get_position()[0], label.get_position()[1] + 0.1))
         self.angle = np.deg2rad(np.r_[angles, angles[0]])
         self.ax = axes[0]
         self.links = []
@@ -152,7 +181,7 @@ class ComplexRadar():
         self.annotations = []
 
     def plot(self, data, properties, series_name, annotate_mask, color=None, *args, **kw):
-        sdata = _scale_data(data, self.ranges)
+        sdata = _scale_data(data, self.ranges, self.log_scale_axes)
         if len(self.angle) != len(sdata) + 1:
             print(f"Error: Angle length ({len(self.angle)}) does not match sdata length ({len(sdata) + 1}) for series {series_name}")
             return
@@ -175,19 +204,23 @@ class ComplexRadar():
         self.series_lines.append((line, series_name))
 
         self.links.append((line, properties['Link']))
-        #self.series_lines.append((line, data))  # Store original data points
 
         # Store the data points with their corresponding angles for hover detection
         for angle, value, orig_value, annotate in zip(self.angle, sdata, data, annotate_mask):
             if not np.isnan(value):
-                self.data_points.append((angle, value, line, series_name, data))
-                if annotate:
-            # add annotations
-                    annotation = self.ax.annotate(f'{orig_value:.2f}', xy=(angle, value), xytext=(angle - 0.6, value + 0.5),
-                                textcoords='data', ha='center', va='center',
-                                bbox=dict(boxstyle='round,pad=0.3', edgecolor='none', facecolor='lightgrey', alpha=0.6),
-                                arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0.2', color='grey'))
-                    self.annotations.append(annotation)
+                axis_range = max(self.ranges[0][1], self.ranges[0][0])
+                distance_from_center = abs(value / axis_range)
+
+                if distance_from_center > 0.5:
+                    self.data_points.append((angle, value, line, series_name, data))
+                #self.data_points.append((angle, value, line, series_name, data))
+                    if annotate:
+                    # add annotations
+                        annotation = self.ax.annotate(f'{orig_value:.2f}', xy=(angle, value), xytext=(angle - 0.6, value + 0.5),
+                                    textcoords='data', ha='center', va='center',
+                                    bbox=dict(boxstyle='round,pad=0.3', edgecolor='none', facecolor='lightgrey', alpha=0.6),
+                                    arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0.2', color='grey'))
+                        self.annotations.append(annotation)
     
     def clear_annotations(self):
         for annotation in self.annotations:
@@ -226,9 +259,13 @@ if len(data) > len(series_names):
 print(f"Data shape: {data.shape}")
 print(f"Number of series: {len(series_names)}")
 
+# Define log scale axes (by index)
+scale_values = data_df['Scale'].values
+log_scale_axes = [i for i, scale in enumerate(scale_values) if scale.lower() == 'log']  # Example: Log scale on third axis
+
 # Plotting
 fig1 = plt.figure(figsize=(16, 12))  # Set figure size to 1600 x 1200 pixels
-radar = ComplexRadar(fig1, categories, ranges, font_size=font_size)
+radar = ComplexRadar(fig1, categories, ranges, font_size=font_size, log_scale_axes=log_scale_axes)
 
 radar.clear_annotations()
 
@@ -240,9 +277,6 @@ for i, series in enumerate(data):
         continue
     print(f"Plotting series: {series_name}")
     radar.plot(series, properties[series_name], series_name, annotate_masks[series_name])
-
-# Add legend
-#plt.legend(loc='upper right', bbox_to_anchor=(1.1, 1.1))
 
 # Interactive cursor to open links on click
 cursor = mplcursors.cursor(radar.ax, hover=True)
@@ -295,15 +329,13 @@ fig1.canvas.mpl_connect("button_press_event", on_click)
 if legend_flag:
     legend_handles, legend_labels = zip(*[(line, series_name) for line, series_name in radar.series_lines])
     plt.legend(handles=legend_handles, labels=legend_labels, loc='upper right', bbox_to_anchor=(1.1, 1.1))
-#plt.legend(loc='upper right', bbox_to_anchor=(1.1, 1.1))  # Adjust the legend position
 plt.subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.1)  # Adjust subplot parameters for more white space
 plt.show()
 
-
-# save image
+# Save image
 if save_image:
     fig2 = plt.figure(figsize=(16, 12))
-    newradar = ComplexRadar(fig2, categories, ranges, font_size=font_size)
+    newradar = ComplexRadar(fig2, categories, ranges, font_size=font_size, log_scale_axes=log_scale_axes)
     for i, series in enumerate(data):
         series_name = series_names[i]
         include_flag = include_series_flags.iloc[i]
@@ -321,24 +353,6 @@ if save_image:
     output_path = './radar_chart.jpg'
     plt.savefig(output_path, format='jpg', bbox_inches='tight')
     plt.close(fig2)
-#plt.show()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
